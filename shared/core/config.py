@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # Allow extra environment variables without validation error
 
 
 # Create settings instance

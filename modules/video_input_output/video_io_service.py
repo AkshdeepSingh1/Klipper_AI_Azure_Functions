@@ -107,7 +107,7 @@ class VideoIOService:
             logger.error(f"Failed to extract thumbnail: {e}")
             raise
     
-    def upload_thumbnail_to_blob(self, thumbnail_bytes: bytes, entity_id: int, entity_type: str) -> str:
+    def upload_thumbnail_to_blob(self, thumbnail_bytes: bytes, entity_id: int, entity_type: str, user_id: int = None, video_id: int = None) -> str:
         """Upload thumbnail to Azure Storage and return URL"""
         try:
             # Validate thumbnail bytes
@@ -116,18 +116,36 @@ class VideoIOService:
             
             logger.info(f"Uploading thumbnail for {entity_type} ID {entity_id}, size: {len(thumbnail_bytes)} bytes")
             
-            # Generate unique filename
-            thumbnail_name = f"thumbnails/{entity_type}/{entity_id}_thumbnail.jpg"
+            if entity_type == "video":
+                # Video structure: raw-videos/thumbnails/{user_id}/{entity_id}_thumbnail.jpg
+                if not user_id:
+                    raise ValueError("user_id is required for video thumbnails")
+                
+                container_name = "raw-videos"
+                thumbnail_name = f"thumbnails/{user_id}/{entity_id}_thumbnail.jpg"
+                container_client = self.blob_service_client.get_container_client(container_name)
+                
+            elif entity_type == "clip":
+                # Clip structure: clips/thumbnails/{user_id}/{video_id}/{entity_id}_thumbnail.jpg
+                if not user_id or not video_id:
+                    raise ValueError("user_id and video_id are required for clip thumbnails")
+                
+                container_name = "clips"
+                thumbnail_name = f"thumbnails/{user_id}/{video_id}/{entity_id}_thumbnail.jpg"
+                container_client = self.blob_service_client.get_container_client(container_name)
+                
+            else:
+                raise ValueError(f"Unknown entity type: {entity_type}")
             
             # Upload to blob storage
-            blob_client = self.container_client.get_blob_client(thumbnail_name)
-            logger.info(f"Uploading to blob: {thumbnail_name}")
+            blob_client = container_client.get_blob_client(thumbnail_name)
+            logger.info(f"Uploading to blob: {thumbnail_name} in container: {container_name}")
             
             blob_client.upload_blob(thumbnail_bytes, overwrite=True)
             logger.info("Thumbnail uploaded successfully to blob storage")
             
             # Generate URL
-            thumbnail_url = f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/{settings.AZURE_STORAGE_CONTAINER_NAME}/{thumbnail_name}"
+            thumbnail_url = f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/{container_name}/{thumbnail_name}"
             logger.info(f"Generated thumbnail URL: {thumbnail_url}")
             
             return thumbnail_url
@@ -135,8 +153,8 @@ class VideoIOService:
         except Exception as e:
             logger.error(f"Failed to upload thumbnail: {e}")
             logger.error(f"Azure Storage Account: {settings.AZURE_STORAGE_ACCOUNT_NAME}")
-            logger.error(f"Container: {settings.AZURE_STORAGE_CONTAINER_NAME}")
             logger.error(f"Entity Type: {entity_type}, Entity ID: {entity_id}")
+            logger.error(f"User ID: {user_id}, Video ID: {video_id}")
             raise
     
     def process_video_thumbnail(self, video_id: int) -> str:
@@ -148,9 +166,10 @@ class VideoIOService:
             if not video:
                 raise ValueError(f"Video with id {video_id} not found")
             
-            # Store blob URL and close database connection
+            # Store video info and close database connection
             blob_url = video.blob_url
-            logger.info(f"Found video {video_id} with blob URL: {blob_url}")
+            user_id = video.user_id
+            logger.info(f"Found video {video_id} with blob URL: {blob_url}, user_id: {user_id}")
             
         finally:
             db.close()
@@ -165,9 +184,9 @@ class VideoIOService:
             logger.info("Extracting thumbnail from video")
             thumbnail_bytes = self.extract_thumbnail_from_video(video_bytes, 1.0)
             
-            # Upload thumbnail
+            # Upload thumbnail with user_id
             logger.info("Uploading thumbnail to Azure Storage")
-            thumbnail_url = self.upload_thumbnail_to_blob(thumbnail_bytes, video_id, "video")
+            thumbnail_url = self.upload_thumbnail_to_blob(thumbnail_bytes, video_id, "video", user_id=user_id)
             
             # Quick database update with just the thumbnail URL
             db = SessionLocal()
@@ -203,10 +222,18 @@ class VideoIOService:
             if not clip:
                 raise ValueError(f"Clip with id {clip_id} not found")
             
-            # Store clip URL and timestamp, then close database connection
+            # Store clip info and close database connection
             clip_url = clip.clip_url
             timestamp = clip.start_time_sec if clip.start_time_sec and clip.start_time_sec > 0 else 1.0
-            logger.info(f"Found clip {clip_id} with URL: {clip_url}, timestamp: {timestamp}")
+            video_id = clip.video_id
+            
+            # Get user_id from the video
+            video = db.query(Video).filter(Video.id == video_id).first()
+            if not video:
+                raise ValueError(f"Video with id {video_id} not found for clip {clip_id}")
+            user_id = video.user_id
+            
+            logger.info(f"Found clip {clip_id} with URL: {clip_url}, timestamp: {timestamp}, video_id: {video_id}, user_id: {user_id}")
             
         finally:
             db.close()
@@ -221,9 +248,9 @@ class VideoIOService:
             logger.info("Extracting thumbnail from clip")
             thumbnail_bytes = self.extract_thumbnail_from_video(video_bytes, timestamp)
             
-            # Upload thumbnail
+            # Upload thumbnail with user_id and video_id
             logger.info("Uploading thumbnail to Azure Storage")
-            thumbnail_url = self.upload_thumbnail_to_blob(thumbnail_bytes, clip_id, "clip")
+            thumbnail_url = self.upload_thumbnail_to_blob(thumbnail_bytes, clip_id, "clip", user_id=user_id, video_id=video_id)
             
             # Quick database update with just the thumbnail URL
             db = SessionLocal()
