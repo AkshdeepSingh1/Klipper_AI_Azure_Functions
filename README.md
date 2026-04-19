@@ -154,6 +154,32 @@ This requires:
 - Valid `local.settings.json` configuration
 - All environment variables set
 
+## Deployment
+
+To deploy the latest changes to Azure Functions:
+
+1. **Login to Azure:**
+   ```bash
+   az login
+   ```
+
+2. **Select the Azure subscription:**
+   ```bash
+   az account set --subscription <your-subscription-id>
+   ```
+
+3. **List available function apps:**
+   ```bash
+   az functionapp list --output table
+   ```
+
+4. **Deploy to Azure:**
+   ```bash
+   func azure functionapp publish CreateThumbnail
+   ```
+
+This will build and deploy your functions to Azure, typically taking 1-2 minutes.
+
 ## API Endpoints
 
 ### Health Check
