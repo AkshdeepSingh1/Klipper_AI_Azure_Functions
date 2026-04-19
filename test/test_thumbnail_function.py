@@ -54,7 +54,7 @@ def test_clip_thumbnail_processing():
     # Create test message for clip thumbnail (process = 1)
     test_message = create_test_queue_message(
         thumbnail_process=GenerateThumbnailProcess.CLIP_THUMBNAIL,
-        entity_id=1  # Use a sample clip ID
+        entity_id=28  # Use a sample clip ID
     )
     
     try:
@@ -94,11 +94,11 @@ if __name__ == "__main__":
     print("=" * 50)
     
     # Run tests
-    test_video_thumbnail_processing()
+    # test_video_thumbnail_processing()
     print()
     test_clip_thumbnail_processing()
     print()
-    test_invalid_message()
+    # test_invalid_message()
     
     print("=" * 50)
     print("🏁 All tests completed!")

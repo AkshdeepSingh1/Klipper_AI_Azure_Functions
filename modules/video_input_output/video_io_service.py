@@ -87,6 +87,13 @@ class VideoIOService:
                 
                 # Read frame
                 ret, frame = cap.read()
+                
+                # If seeking failed, try reading first frame
+                if not ret:
+                    logger.warning(f"Could not read frame at timestamp {timestamp_sec}s, using first frame instead")
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = cap.read()
+                
                 if not ret:
                     raise ValueError("Could not read frame from video")
                 
